@@ -22,8 +22,8 @@ int velocityUpdateInterval = 5;
 int PIDUpdateInterval = 2;
 
 //Change these during demo
-int inputStraight[2] = {120, 0}; // in in
-int inputTurn[2] = {0, 0}; // in degrees, negative means clockwise rotation
+int inputStraight[2] = {12, 12}; // in in
+int inputTurn[2] = {-90, 90}; // in degrees, negative means clockwise rotation
 int motorPower = 50;
 
 /*****************************************
@@ -122,49 +122,59 @@ void draw_grid()
  }
 
 task followLine(){
-	int dir = 1; //1 is left, 0 is right
-	while(true){ //repeats indefinitely
-		while(SensorValue(light) < BLACK){ //while on the line
-			if(dir){ //if direction is set to left
-				motor[leftMotor] = POWER/2; //
-				motor[rightMotor] = POWER/4;// move left
-			}
-			else{
-				motor[leftMotor] = POWER/4; //otherwise move right
-				motor[rightMotor] = POWER/2;
-			}
-		 nxtDisplayTextLine(0, "X: %d", SensorValue(light));
+	int temp = 0;
+	int bkw = 35*1.5;
+	//start sequence
+				int max_sweeps = 20; //# of times robot will sweep to find line
+        int sweeps = 0; // iterator for sweeps
+        int sweep_time = 1; // duration of sweep
+        int dir = 2; // check right first
+        while(true){
+            sweep_time += 2*sweeps*sweeps;
+            if(dir == 1){ //Turn left
+                motor[leftMotor] = -30;
+                motor[rightMotor] = 30;
+            }
+            else if(dir == 2){ //Turn right
+                motor[leftMotor] = 30;
+                motor[rightMotor] = -30;
+            }
+            int temp = 0;
+            for(int t = 0;t<sweep_time;t++){ // time spent sweeping
+	            if(SensorValue(light) < BLACK){ // found line
+	                dir = 0; // go straight again
+	                temp = 1;
+	                break;
+	            }
+	            wait1Msec(1);
+          	}
+          	if(temp) break;
+            if(sweeps > max_sweeps) break; // reached max n# of sweeps
+            // switch direction of sweep
+            if(dir == 1) dir = 2;
+            else dir = 1;
+            sweeps += 1;
+      		}
+	while(true){
+		if(SensorValue(light)<BLACK){
+			motor[leftMotor] = -60;
+			motor[rightMotor] = 30;
+			temp = 1;
+			wait1Msec(10);
 		}
-		//when it leaves the line
-		int arc = 20; //robot sweeps in bigger and bigger arcs back and forth until it finds the line
-									//(measured in miliseconds
-		if(dir) dir = 0; //toggles dir
-		else dir = 1;
-
-		while(true){
-			if(dir){
-				motor[leftMotor] = POWER/4;
-				motor[rightMotor] = POWER/2;
-				for(int t = 0; t<arc; t++){//for the length of arc
-					wait1Msec(1);
-					if(SensorValue(light) > BLACK) //wait a milisecond then check if it's found the line
-						break;
-				}
-				dir = 0; //toggles dir
+		if(SensorValue(light)>BLACK){//on white
+			motor[leftMotor] = 32+(32*1.5-bkw)/6;
+			motor[rightMotor] = bkw/1.5+(32/3-bkw)/6;
+			if(temp==0&&bkw>-32*1.5-(32*1.5-bkw)/6)
+				bkw-=1;
+			else if(temp){
+				bkw = 32*1.5;
+				temp = 0;
 			}
-			else{ //same but for opposite direction
-				motor[leftMotor] = POWER/2;
-				motor[rightMotor] = POWER/4;
-				for(int t = 0; t<arc; t++){
-					wait1Msec(1);
-					if(SensorValue(light) > BLACK)
-						break;
-				}
-				dir = 1;
-			}
-			arc *=2; //enlarges arc
+			wait1Msec(10);
 		}
 	}
+
 }
 /*****************************************
  * Main function - Needs changing
@@ -185,8 +195,8 @@ task main()
 	float distTravelled = 0;
 
 	draw_grid();
-	//startTask(followLine);
-	//while(true){}
+	startTask(followLine);
+	while(true){}
 	startTask(dead_reckoning);
 
 	for(int i = 0; i < 2; i++)
@@ -196,11 +206,12 @@ task main()
 		//Turn
 		float od=2.25;     //Wheel diameter
 		float turnAng=(float)goalTurn; //angle to turn CHANGE ME
-		float dwb=6.54; //wheel base diameter
-		float wheelAng=((dwb*turnAng*720)/(od*824));//(1+exp(-1*turnAng/30+1)); //Angle we want the wheel to turn
+		float dwb=5.75; //wheel base diameter
+		float turnfactor=1.033;
+		float wheelAng=((dwb*turnAng)/od);//Angle we want the wheel to turn
+		nxtDisplayTextLine(0, "Left: %f", nMotorEncoder(leftMotor));
+		nxtDisplayTextLine(1, "Right: %f", nMotorEncoder(rightMotor));
 		while(nMotorEncoder(leftMotor) < (int)wheelAng||(wheelAng<0&&nMotorEncoder(leftMotor)>(int)wheelAng)){
-			nxtDisplayTextLine(0, "Ticks: %f", wheelAng);
-			nxtDisplayTextLine(1, "TurnAng: %f", ((float)nMotorEncoder(leftMotor)*od)/dwb);
 			if(wheelAng>0){
    			motor[leftMotor]=20;
    			motor[rightMotor]=-20;
@@ -218,8 +229,8 @@ task main()
 		wait1Msec(100 * 5);
 		//
 		//Go Straight
-		float fact=goalStraight*120;
-		float dist=fact/138;  //distance to travel
+		float straightfactor=1.045;  //Factor to multiply distance by
+		float dist=straightfactor*goalStraight;  //distance to travel
  
     float cir=od*PI; //Wheel goalStraightumference
     float ticksperin=360/cir;  //ticks per inch
